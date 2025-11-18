@@ -1,0 +1,22 @@
+.DS_Store
+.vscode/
+proxy/node_modules
+cmdbuild-3.4.3-src/ui/build
+cmdbuild-3.4.3-src/ui/target
+cmdbuild-3.4.3-src/ui/izsam.json
+cmdbuild-3.4.3-src/ui/izsam.jsonp
+cmdbuild-3.4.3-src/ui/cmdbuild.json
+cmdbuild-3.4.3-src/ui/cmdbuild.jsonp
+cmdbuild-3.4.3-src/ui/sass/example/bootstrap.json
+cmdbuild-3.4.3-src/ui/sass/example/bootstrap.jsonp
+target
+.flattened-pom.xml
+
+# Build outputs and local files
+output/
+*.war
+build-output.log
+*.sql
+database.local.conf
+database.playground.conf
+build-and-deploy-with-external-js.sh
