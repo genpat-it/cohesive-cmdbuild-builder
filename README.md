@@ -1,17 +1,27 @@
 # Cohesive WAR Builder for CMDBuild
 
-A Docker-based build system that produces a complete, self-contained WAR file for COHESIVE Platform with custom UI extensions.
+A Docker-based build system that **compiles and packages** the [cohesive-cmdbuild](https://github.com/genpat-it/cohesive-cmdbuild) source code into a production-ready WAR file.
 
 ## What is this?
 
-This project builds a **cohesive WAR** - a single, complete WAR file that includes:
+This is a **builder tool** that takes the CMDBuild source code from https://github.com/genpat-it/cohesive-cmdbuild and produces a complete, deployable WAR file.
+
+**What it does:**
+- 📥 Clones the cohesive-cmdbuild source repository
+- 🔨 Compiles Java backend with Maven (128 parallel threads)
+- 🎨 Builds custom UI with Sencha Cmd
+- 📦 Packages everything into a single WAR file
+- ⚙️ Includes your configuration files automatically
+
+**What you get:**
+A production-ready `cohesive-YYYYMMDD-HHMMSS.war` (~390MB) that contains:
 - ✅ CMDBuild application (compiled Java backend)
-- ✅ Custom UI built with Sencha Cmd
+- ✅ Custom UI (compiled with Sencha Cmd)
 - ✅ All configuration files (`WEB-INF/web.xml`, `WEB-INF/conf/*.conf`)
 - ✅ Required directory structure (`WEB-INF/sql/functions/`, `WEB-INF/sql/patches/`)
-- ✅ External JavaScript library references (configurable CDN)
+- ✅ Your database configuration (from `WEB-INF/conf/database.conf`)
 
-**The WAR is ready to deploy** - you only need to provide your `database.conf`.
+**Ready to deploy** - just copy the WAR to your Tomcat server!
 
 ## Quick Start
 
