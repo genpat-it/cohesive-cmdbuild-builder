@@ -39,10 +39,17 @@ RUN mv /root/bin/Sencha/Cmd/sencha /root/bin/Sencha/Cmd/sencha-original && \
 
 ENV PATH="/root/bin/Sencha/Cmd:${PATH}"
 
+# Copy Maven settings with Central repository
+COPY settings.xml /root/.m2/settings.xml
+
 WORKDIR /build
+
+# Cache buster to force fresh git clone on each build
+ARG CACHEBUST=1
 
 # Clone repository
 RUN --mount=type=cache,target=/root/.gitcache \
+    echo "Cache invalidation: ${CACHEBUST}" && \
     echo "=========================================" && \
     echo "Cloning repository" && \
     echo "Repository: ${GIT_REPO}" && \
@@ -62,6 +69,20 @@ WORKDIR /build/cmdbuild-ui/cmdbuild-3.4.3-src
 RUN echo "=========================================" && \
     echo "Fixing Maven dependencies" && \
     echo "=========================================" && \
+    # Add Maven Central repository to root pom.xml to resolve jTDS
+    sed -i '/<repositories>/,/<\/repositories>/d' pom.xml 2>/dev/null || true && \
+    sed -i '/<\/project>/i \
+    <repositories>\
+        <repository>\
+            <id>central</id>\
+            <url>https://repo1.maven.org/maven2</url>\
+        </repository>\
+        <repository>\
+            <id>atlassian</id>\
+            <url>https://maven.atlassian.com/content/groups/public</url>\
+        </repository>\
+    </repositories>' pom.xml && \
+    echo "✓ Added Maven Central repository" && \
     cd ui && \
     sed -i '161 a\                    <dependency>\n                        <groupId>com.google.guava</groupId>\n                        <artifactId>guava</artifactId>\n                        <version>30.1-jre</version>\n                    </dependency>' pom.xml && \
     echo "✓ Guava dependency fixed" && \
@@ -77,19 +98,21 @@ RUN echo "=========================================" && \
     echo "✓ Removed problematic cmdbuild-dao-sql:zip dependency and unpack-sql execution"
 
 # Build with Maven - Using cache mount for Maven repository
-RUN --mount=type=cache,target=/root/.m2,sharing=locked \
+RUN --mount=type=cache,target=/root/.m2/repository,sharing=locked \
     echo "=========================================" && \
     echo "Building with Maven (threads: ${MAVEN_THREADS})" && \
     echo "=========================================" && \
+    echo "Clearing cached jTDS to force re-download from Central..." && \
+    rm -rf /root/.m2/repository/net/sourceforge/jtds 2>/dev/null || true && \
     echo "Syncing UI sources..." && \
     rsync -rWI ui/izsam/src ui/app/ && \
     echo "Removing conflicting UI directories..." && \
     rm -rf ui/app/view/contextmenucomponents ui/app/view/custompages && \
     echo "Starting Maven build..." && \
     if [ "${MAVEN_THREADS}" = "1" ]; then \
-        mvn -B -am -pl cmdbuild clean install -DskipTests; \
+        mvn -B -s /root/.m2/settings.xml -am -pl cmdbuild clean install -DskipTests; \
     else \
-        mvn -B -T ${MAVEN_THREADS} -am -pl cmdbuild clean install -DskipTests; \
+        mvn -B -s /root/.m2/settings.xml -T ${MAVEN_THREADS} -am -pl cmdbuild clean install -DskipTests; \
     fi && \
     echo "✓ Build completed successfully"
 
