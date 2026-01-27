@@ -360,6 +360,70 @@ The WAR includes minimal configuration files in `WEB-INF/`:
 
 All configuration files are automatically included in the WAR during build.
 
+### Build Caching & Performance
+
+The build system uses **Docker BuildKit cache mounts** for maximum performance:
+
+#### BuildKit Cache Optimizations
+
+The Dockerfile is optimized with BuildKit cache mounts for:
+
+1. **Maven dependencies** (`/root/.m2`)
+   - Dependencies are cached across builds
+   - Shared between containers with `sharing=locked`
+   - Survives container removal
+
+2. **APT packages** (`/var/cache/apt`, `/var/lib/apt`)
+   - System packages are cached
+   - Faster dependency installation
+
+3. **Downloaded files** (`/tmp/cache`)
+   - Sencha Cmd installer cached
+   - libssl package cached
+
+#### Performance Benefits
+
+- **First build**: ~7-8 minutes (with 128 Maven threads)
+- **Subsequent builds**: ~5-6 minutes (cache hits)
+- **Clean rebuild**: Use `docker builder prune` to clear cache
+
+#### Cache Management
+
+View cache usage:
+```bash
+docker buildx du
+```
+
+Clear build cache:
+```bash
+docker builder prune -af
+```
+
+Clear specific cache:
+```bash
+# Clear only Maven cache
+docker builder prune --filter type=exec.cachemount
+```
+
+#### Legacy: Docker Volume Cache (Not Recommended)
+
+The old volume-based caching is **no longer needed** thanks to BuildKit. The following approach is deprecated:
+
+<details>
+<summary>Old volume-based approach (click to expand)</summary>
+
+```bash
+# OLD METHOD - Not recommended
+docker volume create maven-repo
+docker build -v maven-repo:/root/.m2 ...
+```
+
+BuildKit cache mounts are superior because they:
+- Don't require manual volume management
+- Work automatically with `--mount=type=cache`
+- Are cleaned up with `docker builder prune`
+</details>
+
 ## Why Use This Builder?
 
 This builder provides:

@@ -31,15 +31,34 @@ mkdir -p ${OUTPUT_DIR}
 
 # Build the Docker image with BuildKit for caching
 echo -e "\n${YELLOW}Building Docker image (using BuildKit with caching)...${NC}"
+
+# Prepare secret for GIT_TOKEN (secure way - not stored in image history)
+SECRET_ARG=""
+if [ -n "${GIT_TOKEN}" ]; then
+    # Create temporary file for the secret
+    TOKEN_FILE=$(mktemp)
+    echo -n "${GIT_TOKEN}" > "${TOKEN_FILE}"
+    SECRET_ARG="--secret id=git_token,src=${TOKEN_FILE}"
+    echo -e "Using GIT_TOKEN via BuildKit secret (secure)"
+fi
+
 DOCKER_BUILDKIT=1 docker build \
     --build-arg GIT_REPO=${GIT_REPO} \
     --build-arg GIT_BRANCH=${GIT_BRANCH} \
-    --build-arg GIT_TOKEN=${GIT_TOKEN} \
     --build-arg MAVEN_THREADS=${MAVEN_THREADS} \
+    --build-arg CACHEBUST=$(date +%s) \
+    ${SECRET_ARG} \
     -t cmdbuild-builder:latest \
     . 2>&1 | tee ${OUTPUT_DIR}/build-$(date +%Y%m%d-%H%M%S).log
 
-if [ ${PIPESTATUS[0]} -ne 0 ]; then
+BUILD_RESULT=${PIPESTATUS[0]}
+
+# Clean up secret file
+if [ -n "${TOKEN_FILE}" ] && [ -f "${TOKEN_FILE}" ]; then
+    rm -f "${TOKEN_FILE}"
+fi
+
+if [ ${BUILD_RESULT} -ne 0 ]; then
     echo -e "\n${RED}=========================================${NC}"
     echo -e "${RED}BUILD FAILED!${NC}"
     echo -e "${RED}=========================================${NC}"

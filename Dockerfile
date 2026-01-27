@@ -4,8 +4,8 @@ FROM maven:3.8.6-eclipse-temurin-17
 # Build arguments
 ARG GIT_REPO=https://github.com/genpat-it/cohesive-cmdbuild
 ARG GIT_BRANCH=main
-ARG GIT_TOKEN=""
 ARG MAVEN_THREADS=128
+# Note: GIT_TOKEN is now passed via BuildKit secrets for security
 
 # Install dependencies and Java 8 (for Sencha Cmd)
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -47,16 +47,18 @@ WORKDIR /build
 # Cache buster to force fresh git clone on each build
 ARG CACHEBUST=1
 
-# Clone repository
+# Clone repository (GIT_TOKEN passed securely via BuildKit secret)
 RUN --mount=type=cache,target=/root/.gitcache \
+    --mount=type=secret,id=git_token,required=false \
     echo "Cache invalidation: ${CACHEBUST}" && \
     echo "=========================================" && \
     echo "Cloning repository" && \
     echo "Repository: ${GIT_REPO}" && \
     echo "Branch: ${GIT_BRANCH}" && \
     echo "=========================================" && \
-    if [ -n "${GIT_TOKEN}" ]; then \
-        REPO_WITH_TOKEN=$(echo ${GIT_REPO} | sed "s|://|://${GIT_TOKEN}@|"); \
+    if [ -f /run/secrets/git_token ]; then \
+        GIT_TOKEN=$(cat /run/secrets/git_token) && \
+        REPO_WITH_TOKEN=$(echo ${GIT_REPO} | sed "s|://|://${GIT_TOKEN}@|") && \
         git clone --branch ${GIT_BRANCH} --single-branch --depth 1 ${REPO_WITH_TOKEN} cmdbuild-ui; \
     else \
         git clone --branch ${GIT_BRANCH} --single-branch --depth 1 ${GIT_REPO} cmdbuild-ui; \
