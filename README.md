@@ -29,8 +29,8 @@ A production-ready `cohesive-YYYYMMDD-HHMMSS.war` (~390MB) that contains:
 
 ```bash
 # Clone this repository
-git clone https://github.com/genpat-it/cohesive-war-builder.git
-cd cohesive-war-builder
+git clone https://github.com/genpat-it/cohesive-cmdbuild-builder.git
+cd cohesive-cmdbuild-builder
 
 # Configure database BEFORE building
 nano WEB-INF/conf/database.conf
@@ -187,7 +187,7 @@ MAVEN_THREADS=1 \
 ## Project Structure
 
 ```
-cohesive-war-builder/
+cohesive-cmdbuild-builder/
 ├── Dockerfile                 # Builds the WAR from source
 ├── build-war.sh              # Build script
 ├── deploy-war.sh             # Automatic deployment script (optional)
@@ -501,7 +501,7 @@ CMDBuild itself is licensed under AGPL v3.
 ## Support
 
 For issues, questions, or suggestions:
-- Open an issue on [GitHub](https://github.com/genpat-it/cohesive-war-builder/issues)
+- Open an issue on [GitHub](https://github.com/genpat-it/cohesive-cmdbuild-builder/issues)
 - Check existing issues and documentation
 - Provide detailed information (build logs, environment, steps to reproduce)
 
