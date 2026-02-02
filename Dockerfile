@@ -46,6 +46,7 @@ WORKDIR /build
 
 # Cache buster to force fresh git clone on each build
 ARG CACHEBUST=1
+ARG GIT_COMMIT=
 
 # Clone repository (GIT_TOKEN passed securely via BuildKit secret)
 RUN --mount=type=cache,target=/root/.gitcache \
@@ -55,13 +56,19 @@ RUN --mount=type=cache,target=/root/.gitcache \
     echo "Cloning repository" && \
     echo "Repository: ${GIT_REPO}" && \
     echo "Branch: ${GIT_BRANCH}" && \
+    if [ -n "${GIT_COMMIT}" ]; then echo "Commit: ${GIT_COMMIT}"; fi && \
     echo "=========================================" && \
     if [ -f /run/secrets/git_token ]; then \
         GIT_TOKEN=$(cat /run/secrets/git_token) && \
-        REPO_WITH_TOKEN=$(echo ${GIT_REPO} | sed "s|://|://${GIT_TOKEN}@|") && \
-        git clone --branch ${GIT_BRANCH} --single-branch --depth 1 ${REPO_WITH_TOKEN} cmdbuild-ui; \
+        REPO=$(echo ${GIT_REPO} | sed "s|://|://${GIT_TOKEN}@|"); \
     else \
-        git clone --branch ${GIT_BRANCH} --single-branch --depth 1 ${GIT_REPO} cmdbuild-ui; \
+        REPO=${GIT_REPO}; \
+    fi && \
+    if [ -n "${GIT_COMMIT}" ]; then \
+        git clone --branch ${GIT_BRANCH} --single-branch ${REPO} cmdbuild-ui && \
+        cd cmdbuild-ui && git checkout ${GIT_COMMIT} && cd ..; \
+    else \
+        git clone --branch ${GIT_BRANCH} --single-branch --depth 1 ${REPO} cmdbuild-ui; \
     fi && \
     echo "✓ Repository cloned successfully"
 

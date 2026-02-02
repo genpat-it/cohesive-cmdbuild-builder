@@ -146,6 +146,7 @@ See [cohesive-common-resources documentation](https://github.com/genpat-it/cohes
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `GIT_TOKEN` | _(empty)_ | Authentication token for private repos |
+| `GIT_COMMIT` | _(empty)_ | Specific commit hash to checkout (omit for branch HEAD) |
 | `MAVEN_THREADS` | `128` | Maven parallel build threads |
 
 ### Build Examples
@@ -164,6 +165,16 @@ GIT_BRANCH=main \
 GIT_TOKEN=your_token_here \
 ./build-war.sh
 ```
+
+#### Build from a specific commit
+```bash
+GIT_REPO=https://github.com/genpat-it/cohesive-cmdbuild \
+GIT_BRANCH=main \
+GIT_COMMIT=a1b2c3d \
+./build-war.sh
+```
+
+> **Note:** When `GIT_COMMIT` is set, the full branch history is cloned (no `--depth 1`) so the commit can be checked out. When omitted, a shallow clone is used for faster builds.
 
 #### Single-threaded build (for debugging)
 ```bash

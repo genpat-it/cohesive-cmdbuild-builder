@@ -15,6 +15,7 @@ NC='\033[0m' # No Color
 GIT_REPO="${GIT_REPO:-https://github.com/genpat-it/cohesive-cmdbuild}"
 GIT_BRANCH="${GIT_BRANCH:-main}"
 GIT_TOKEN="${GIT_TOKEN:-}"
+GIT_COMMIT="${GIT_COMMIT:-}"
 OUTPUT_DIR="./output"
 MAVEN_THREADS="${MAVEN_THREADS:-128}"
 
@@ -23,6 +24,9 @@ echo -e "${GREEN}CMDBuild WAR Builder${NC}"
 echo -e "${GREEN}=========================================${NC}"
 echo -e "Repository: ${YELLOW}${GIT_REPO}${NC}"
 echo -e "Branch: ${YELLOW}${GIT_BRANCH}${NC}"
+if [ -n "${GIT_COMMIT}" ]; then
+    echo -e "Commit: ${YELLOW}${GIT_COMMIT}${NC}"
+fi
 echo -e "Maven threads: ${YELLOW}${MAVEN_THREADS}${NC}"
 echo -e "${GREEN}=========================================${NC}"
 
@@ -42,11 +46,17 @@ if [ -n "${GIT_TOKEN}" ]; then
     echo -e "Using GIT_TOKEN via BuildKit secret (secure)"
 fi
 
+COMMIT_ARG=""
+if [ -n "${GIT_COMMIT}" ]; then
+    COMMIT_ARG="--build-arg GIT_COMMIT=${GIT_COMMIT}"
+fi
+
 DOCKER_BUILDKIT=1 docker build \
     --build-arg GIT_REPO=${GIT_REPO} \
     --build-arg GIT_BRANCH=${GIT_BRANCH} \
     --build-arg MAVEN_THREADS=${MAVEN_THREADS} \
     --build-arg CACHEBUST=$(date +%s) \
+    ${COMMIT_ARG} \
     ${SECRET_ARG} \
     -t cmdbuild-builder:latest \
     . 2>&1 | tee ${OUTPUT_DIR}/build-$(date +%Y%m%d-%H%M%S).log
