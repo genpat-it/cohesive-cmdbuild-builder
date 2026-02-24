@@ -1,10 +1,12 @@
 # syntax=docker/dockerfile:1
-FROM maven:3.8.6-eclipse-temurin-17
+FROM maven:3.8.6-eclipse-temurin-17 AS builder
 
 # Build arguments
 ARG GIT_REPO=https://github.com/genpat-it/cohesive-cmdbuild
 ARG GIT_BRANCH=main
 ARG MAVEN_THREADS=128
+ARG SKIP_SENCHA_TESTING=false
+ARG GIT_SSH_PORT=
 # Note: GIT_TOKEN is now passed via BuildKit secrets for security
 
 # Install dependencies and Java 8 (for Sencha Cmd)
@@ -48,9 +50,10 @@ WORKDIR /build
 ARG CACHEBUST=1
 ARG GIT_COMMIT=
 
-# Clone repository (GIT_TOKEN passed securely via BuildKit secret)
+# Clone repository (supports SSH agent forwarding, token secret, or public HTTP)
 RUN --mount=type=cache,target=/root/.gitcache \
     --mount=type=secret,id=git_token,required=false \
+    --mount=type=ssh \
     echo "Cache invalidation: ${CACHEBUST}" && \
     echo "=========================================" && \
     echo "Cloning repository" && \
@@ -58,6 +61,12 @@ RUN --mount=type=cache,target=/root/.gitcache \
     echo "Branch: ${GIT_BRANCH}" && \
     if [ -n "${GIT_COMMIT}" ]; then echo "Commit: ${GIT_COMMIT}"; fi && \
     echo "=========================================" && \
+    # Configure SSH for git clone (skip host key check, optional custom port) \
+    mkdir -p ~/.ssh && \
+    printf "Host *\n  StrictHostKeyChecking no\n  UserKnownHostsFile /dev/null\n" > ~/.ssh/config && \
+    if [ -n "${GIT_SSH_PORT}" ]; then \
+        printf "  Port %s\n" "${GIT_SSH_PORT}" >> ~/.ssh/config; \
+    fi && \
     if [ -f /run/secrets/git_token ]; then \
         GIT_TOKEN=$(cat /run/secrets/git_token) && \
         REPO=$(echo ${GIT_REPO} | sed "s|://|://${GIT_TOKEN}@|"); \
@@ -70,6 +79,7 @@ RUN --mount=type=cache,target=/root/.gitcache \
     else \
         git clone --branch ${GIT_BRANCH} --single-branch --depth 1 ${REPO} cmdbuild-ui; \
     fi && \
+    rm -f ~/.ssh/config && \
     echo "✓ Repository cloned successfully"
 
 WORKDIR /build/cmdbuild-ui/cmdbuild-3.4.3-src
@@ -105,6 +115,22 @@ RUN echo "=========================================" && \
     sed -i '/<dependency>/{:a;N;/<\/dependency>/!ba;/<artifactId>cmdbuild-dao-sql<\/artifactId>/d}' pom.xml && \
     sed -i '/<execution>/{:a;N;/<\/execution>/!ba;/<id>unpack-sql<\/id>/d}' pom.xml && \
     echo "✓ Removed problematic cmdbuild-dao-sql:zip dependency and unpack-sql execution"
+
+# Optionally skip Sencha testing build (saves ~2:48 min)
+RUN if [ "${SKIP_SENCHA_TESTING}" = "true" ]; then \
+        echo "=========================================" && \
+        echo "Skipping Sencha testing build (SKIP_SENCHA_TESTING=true)" && \
+        echo "=========================================" && \
+        # Remove the sencha-app-build-testing <execution> block from ui/pom.xml
+        perl -0777 -i -pe 's/<execution>\s*<id>sencha-app-build-testing<\/id>.*?<\/execution>\s*//s' ui/pom.xml && \
+        echo "✓ Removed sencha-app-build-testing execution" && \
+        # Remove the <resource> block that maps build/testing/CMDBuildUI → ui_dev
+        perl -0777 -i -pe 's/<resource>\s*<directory>build\/testing\/CMDBuildUI<\/directory>\s*<targetPath>ui_dev<\/targetPath>\s*<\/resource>\s*//s' ui/pom.xml && \
+        echo "✓ Removed ui_dev resource mapping" && \
+        echo "✓ Testing build will be skipped"; \
+    else \
+        echo "Sencha testing build enabled (SKIP_SENCHA_TESTING=false)"; \
+    fi
 
 # Build with Maven - Using cache mount for Maven repository
 RUN --mount=type=cache,target=/root/.m2/repository,sharing=locked \
@@ -144,31 +170,34 @@ RUN echo "=========================================" && \
 COPY WEB-INF /tmp/webinf-template
 
 RUN echo "=========================================" && \
-    echo "Adding configuration files to WAR" && \
+    echo "Adding configuration files to WAR (in-place)" && \
     echo "=========================================" && \
-    cd /tmp && \
-    # Extract WAR \
-    unzip -q /cmdbuild-built.war -d /tmp/war && \
-    # Copy all WEB-INF files from template (web.xml + all .conf files + sql/) \
-    cp -r /tmp/webinf-template/web.xml /tmp/war/WEB-INF/ && \
-    echo "✓ web.xml added" && \
-    cp -r /tmp/webinf-template/conf /tmp/war/WEB-INF/ && \
-    echo "✓ All configuration files copied" && \
-    cp -r /tmp/webinf-template/sql /tmp/war/WEB-INF/ && \
-    echo "✓ SQL directories added (functions/ and patches/)" && \
-    echo "✓ Database configuration included:" && \
-    cat /tmp/war/WEB-INF/conf/database.conf && \
-    # Rebuild WAR \
-    cd /tmp/war && \
+    cp /cmdbuild-built.war /cmdbuild-final.war && \
+    # Prepare WEB-INF overlay in a temp directory \
+    mkdir -p /tmp/war-overlay/WEB-INF/conf /tmp/war-overlay/WEB-INF/sql && \
+    cp /tmp/webinf-template/web.xml /tmp/war-overlay/WEB-INF/ && \
+    echo "✓ web.xml prepared" && \
+    cp -r /tmp/webinf-template/conf/* /tmp/war-overlay/WEB-INF/conf/ && \
+    echo "✓ Configuration files prepared" && \
+    cp -r /tmp/webinf-template/sql/* /tmp/war-overlay/WEB-INF/sql/ 2>/dev/null || true && \
+    echo "✓ SQL directories prepared" && \
+    echo "Database configuration:" && \
+    cat /tmp/war-overlay/WEB-INF/conf/database.conf && \
+    # Add/update files directly into WAR without full extract \
+    cd /tmp/war-overlay && \
     zip -q -r /cmdbuild-final.war . && \
+    echo "✓ Configuration injected into WAR" && \
+    rm -rf /tmp/war-overlay && \
     echo "✓ Final WAR created" && \
     ls -lh /cmdbuild-final.war && \
-    # Show statistics \
     echo "" && \
     echo "WAR Statistics:" && \
     unzip -l /cmdbuild-final.war | tail -1 && \
     echo "" && \
     echo "Checking for ui_dev/:" && \
-    unzip -l /cmdbuild-final.war | grep -c "ui_dev/" || echo "WARNING: ui_dev/ not found!"
+    unzip -l /cmdbuild-final.war | grep -c "ui_dev/" || echo "ui_dev/ not found (expected if SKIP_SENCHA_TESTING=true)"
 
-CMD ["bash"]
+# === Stage 2: Minimal export image (only the WAR) ===
+FROM alpine:latest
+COPY --from=builder /cmdbuild-final.war /cmdbuild-final.war
+CMD ["echo", "WAR file: /cmdbuild-final.war"]

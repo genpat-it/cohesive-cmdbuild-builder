@@ -47,7 +47,7 @@ The build process will:
 - Build custom UI with Sencha Cmd
 - Package everything into a single, cohesive WAR file
 
-**Output**: `./output/cohesive-YYYYMMDD-HHMMSS.war` (~390-420MB)
+**Output**: `./output/cohesive-YYYYMMDD-HHMMSS.war` (~368MB), symlinked as `./output/cohesive-latest.war`
 
 ### 2. Deploy
 
@@ -145,9 +145,12 @@ See [cohesive-common-resources documentation](https://github.com/genpat-it/cohes
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GIT_TOKEN` | _(empty)_ | Authentication token for private repos |
+| `GIT_TOKEN` | _(empty)_ | Authentication token for private repos (HTTP) |
 | `GIT_COMMIT` | _(empty)_ | Specific commit hash to checkout (omit for branch HEAD) |
+| `GIT_SSH_PORT` | _(empty)_ | Custom SSH port for git clone (e.g., `222` for Gitea) |
 | `MAVEN_THREADS` | `128` | Maven parallel build threads |
+| `SKIP_SENCHA_TESTING` | `true` | Skip Sencha testing build (saves ~2:48 min, omits `ui_dev/` from WAR) |
+| `KEEP_BUILDS` | `5` | Number of old WAR builds to keep in `output/` |
 
 ### Build Examples
 
@@ -158,13 +161,23 @@ GIT_BRANCH=main \
 ./build-war.sh
 ```
 
-#### Build with private repository token
+#### Build with private repository (HTTP token)
 ```bash
 GIT_REPO=https://github.com/genpat-it/cohesive-cmdbuild \
 GIT_BRANCH=main \
 GIT_TOKEN=your_token_here \
 ./build-war.sh
 ```
+
+#### Build with SSH (e.g., Gitea on custom port)
+```bash
+GIT_REPO=git@gitea.example.com:org/cmdbuild-ui.git \
+GIT_BRANCH=main \
+GIT_SSH_PORT=222 \
+./build-war.sh
+```
+
+> **Note:** SSH builds use SSH agent forwarding via BuildKit. The script automatically starts `ssh-agent` and loads your default key.
 
 #### Build from a specific commit
 ```bash
@@ -176,6 +189,16 @@ GIT_COMMIT=a1b2c3d \
 
 > **Note:** When `GIT_COMMIT` is set, the full branch history is cloned (no `--depth 1`) so the commit can be checked out. When omitted, a shallow clone is used for faster builds.
 
+#### Build with testing UI (ui_dev/)
+```bash
+GIT_REPO=https://github.com/genpat-it/cohesive-cmdbuild \
+GIT_BRANCH=main \
+SKIP_SENCHA_TESTING=false \
+./build-war.sh
+```
+
+> **Note:** By default `SKIP_SENCHA_TESTING=true`, which skips the Sencha testing build and omits `ui_dev/` from the WAR, saving ~2:48 minutes. Set to `false` if you need the debug UI with source maps.
+
 #### Single-threaded build (for debugging)
 ```bash
 GIT_REPO=https://github.com/genpat-it/cohesive-cmdbuild \
@@ -184,12 +207,39 @@ MAVEN_THREADS=1 \
 ./build-war.sh
 ```
 
+## Hotpatch (Quick JS/Config Changes)
+
+For quick changes (locales, JS files, configuration) without a full Sencha/Maven rebuild:
+
+```bash
+# 1. Create a patch directory mirroring the WAR structure
+mkdir -p patch/ui/app/locales
+cp my-locale-it.js patch/ui/app/locales/locale-it.js
+
+# 2. Apply the patch to an existing WAR
+./hotpatch-war.sh ./output/cohesive-latest.war ./patch
+
+# 3. Verify
+unzip -p ./output/cohesive-latest.war ui/app/locales/locale-it.js | head -5
+```
+
+The patch directory mirrors the WAR internal structure:
+```
+patch/
+├── ui/              → production UI files
+├── ui_dev/          → testing/debug UI files (if present in WAR)
+└── WEB-INF/         → configuration files (web.xml, conf/, sql/)
+```
+
+This takes **seconds** instead of minutes — no Docker, Maven, or Sencha needed.
+
 ## Project Structure
 
 ```
 cohesive-cmdbuild-builder/
 ├── Dockerfile                 # Builds the WAR from source
 ├── build-war.sh              # Build script
+├── hotpatch-war.sh           # Quick WAR patching (no rebuild)
 ├── deploy-war.sh             # Automatic deployment script (optional)
 ├── WEB-INF/                  # Template files included in WAR
 │   ├── web.xml               # Tomcat servlet configuration
@@ -199,32 +249,40 @@ cohesive-cmdbuild-builder/
 │       ├── functions/
 │       └── patches/
 ├── output/                   # Build output directory
-│   └── cohesive-*.war        # Final WAR file
+│   ├── cohesive-*.war        # Timestamped WAR files
+│   └── cohesive-latest.war   # Symlink to latest build
 └── README.md                 # This file
 ```
 
 ## Architecture
 
-### Build Phase
+### Build Phase (Multi-stage Dockerfile)
 ```
-Source Code (Git: configurable repo + branch)
-    ↓
-Maven Build (Java compilation)
-    ↓
-Sencha Cmd Build (UI compilation)
-    ↓
-Add WEB-INF structure (web.xml, conf/, sql/)
-    ↓
-Include database.conf from WEB-INF/conf/
-    ↓
-Package → cohesive WAR in output/
+┌─ Stage 1: builder ──────────────────────────┐
+│ Source Code (Git: configurable repo + branch)│
+│     ↓                                        │
+│ Maven Build (Java compilation, 128 threads)  │
+│     ↓                                        │
+│ Sencha Cmd Build (UI production only)        │
+│     ↓                                        │
+│ Inject WEB-INF (web.xml, conf/, sql/)        │
+│     ↓                                        │
+│ cmdbuild-final.war                           │
+└──────────────────────────────────────────────┘
+      ↓ COPY --from=builder
+┌─ Stage 2: export (Alpine, ~370MB) ──────────┐
+│ cmdbuild-final.war → output/cohesive-*.war   │
+│                    → output/cohesive-latest.war (symlink) │
+└──────────────────────────────────────────────┘
 ```
+
+Old builds are automatically cleaned up (keeps last 5 by default, configurable via `KEEP_BUILDS`).
 
 ## Build Requirements
 
 - **Docker** 20.10+ with BuildKit enabled (enabled by default in Docker 23.0+)
 - **Disk Space**: ~2-3GB free
-- **Build Time**: ~7-8 minutes (first build), ~5-6 minutes (subsequent builds with cache)
+- **Build Time**: ~3:30 min (default), ~6 min (with `SKIP_SENCHA_TESTING=false`)
 - **Network**: Access to source repository and Maven Central
 - **CPU**: More cores = faster builds (128 parallel Maven threads by default)
 
@@ -394,9 +452,22 @@ The Dockerfile is optimized with BuildKit cache mounts for:
 
 #### Performance Benefits
 
-- **First build**: ~7-8 minutes (with 128 Maven threads)
-- **Subsequent builds**: ~5-6 minutes (cache hits)
+- **Default build** (`SKIP_SENCHA_TESTING=true`): ~3:30 min
+- **Full build** (`SKIP_SENCHA_TESTING=false`): ~6 min
+- **Hotpatch** (JS/locale/config changes): seconds
 - **Clean rebuild**: Use `docker builder prune` to clear cache
+
+The build script prints a timing summary at the end:
+```
+=========================================
+Build Timing
+=========================================
+Docker build:  3:10
+WAR extract:   0:03
+─────────────────────
+Total:         3:14
+=========================================
+```
 
 #### Cache Management
 
