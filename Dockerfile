@@ -31,12 +31,12 @@ RUN --mount=type=cache,target=/tmp/cache \
     JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64 /tmp/SenchaCmd-6.2.2.36-linux-amd64.sh -q && \
     rm -rf /tmp/SenchaCmd-6.2.2.36-linux-amd64.sh
 
-# Create wrapper script for sencha with Java 8
+# Create wrapper script for sencha with Java 8 (suppress Rhino parse warnings)
 RUN mv /root/bin/Sencha/Cmd/sencha /root/bin/Sencha/Cmd/sencha-original && \
     echo '#!/bin/bash' > /root/bin/Sencha/Cmd/sencha && \
     echo 'export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64' >> /root/bin/Sencha/Cmd/sencha && \
     echo 'export OPENSSL_CONF=/dev/null' >> /root/bin/Sencha/Cmd/sencha && \
-    echo 'exec /root/bin/Sencha/Cmd/sencha-original "$@"' >> /root/bin/Sencha/Cmd/sencha && \
+    echo 'exec /root/bin/Sencha/Cmd/sencha-original config -prop compiler.warn.enabled=false then "$@"' >> /root/bin/Sencha/Cmd/sencha && \
     chmod +x /root/bin/Sencha/Cmd/sencha
 
 ENV PATH="/root/bin/Sencha/Cmd:${PATH}"
