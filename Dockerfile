@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1
-FROM maven:3.8.6-eclipse-temurin-17 AS builder
+# Requires base image: docker build -f Dockerfile.base -t cmdbuild-builder-base:latest .
+FROM cmdbuild-builder-base:latest AS builder
 
 # Build arguments
 ARG GIT_REPO=https://github.com/genpat-it/cohesive-cmdbuild
@@ -8,41 +9,6 @@ ARG MAVEN_THREADS=128
 ARG SKIP_SENCHA_TESTING=false
 ARG GIT_SSH_PORT=
 # Note: GIT_TOKEN is now passed via BuildKit secrets for security
-
-# Install dependencies and Java 8 (for Sencha Cmd)
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update && apt-get install -y \
-    wget curl unzip zip ruby ruby-dev rsync git openjdk-8-jdk \
-    && rm -rf /var/lib/apt/lists/*
-
-# Download and install libssl1.1 for PhantomJS
-RUN --mount=type=cache,target=/tmp/cache \
-    wget http://snapshot.debian.org/archive/debian/20230611T025313Z/pool/main/o/openssl/libssl1.1_1.1.1n-0+deb11u5_amd64.deb -O /tmp/cache/libssl1.1.deb \
-    && dpkg -i /tmp/cache/libssl1.1.deb
-
-# Install Sencha Cmd 6.2.2.36
-RUN --mount=type=cache,target=/tmp/cache \
-    if [ ! -f /tmp/cache/sencha.zip ]; then \
-        wget -q http://cdn.sencha.com/cmd/6.2.2.36/no-jre/SenchaCmd-6.2.2.36-linux-amd64.sh.zip -O /tmp/cache/sencha.zip; \
-    fi && \
-    unzip /tmp/cache/sencha.zip -d /tmp && \
-    chmod +x /tmp/SenchaCmd-6.2.2.36-linux-amd64.sh && \
-    JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64 /tmp/SenchaCmd-6.2.2.36-linux-amd64.sh -q && \
-    rm -rf /tmp/SenchaCmd-6.2.2.36-linux-amd64.sh
-
-# Create wrapper script for sencha with Java 8 (suppress Rhino parse warnings)
-RUN mv /root/bin/Sencha/Cmd/sencha /root/bin/Sencha/Cmd/sencha-original && \
-    echo '#!/bin/bash' > /root/bin/Sencha/Cmd/sencha && \
-    echo 'export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64' >> /root/bin/Sencha/Cmd/sencha && \
-    echo 'export OPENSSL_CONF=/dev/null' >> /root/bin/Sencha/Cmd/sencha && \
-    echo 'exec /root/bin/Sencha/Cmd/sencha-original config -prop compiler.warn.enabled=false then "$@"' >> /root/bin/Sencha/Cmd/sencha && \
-    chmod +x /root/bin/Sencha/Cmd/sencha
-
-ENV PATH="/root/bin/Sencha/Cmd:${PATH}"
-
-# Copy Maven settings with Central repository
-COPY settings.xml /root/.m2/settings.xml
 
 WORKDIR /build
 

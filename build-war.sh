@@ -40,6 +40,15 @@ T_TOTAL_START=$(date +%s)
 # Create output directory
 mkdir -p ${OUTPUT_DIR}
 
+# Ensure base image exists (build once, reuse across builds)
+if ! docker image inspect cmdbuild-builder-base:latest &>/dev/null; then
+    echo -e "\n${YELLOW}Base image not found. Building cmdbuild-builder-base:latest...${NC}"
+    DOCKER_BUILDKIT=1 docker build -f Dockerfile.base -t cmdbuild-builder-base:latest .
+    echo -e "${GREEN}✓ Base image built${NC}"
+else
+    echo -e "\n${GREEN}✓ Base image cmdbuild-builder-base:latest found${NC}"
+fi
+
 # Build the Docker image with BuildKit for caching
 echo -e "\n${YELLOW}Building Docker image (using BuildKit with caching)...${NC}"
 
