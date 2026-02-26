@@ -52,8 +52,10 @@ else
     CURL_AUTH="-u ${TOMCAT_USER}:${TOMCAT_PASS}"
 fi
 
-# Find the most recent WAR file
-WAR_FILE=$(ls -t ${OUTPUT_DIR}/cohesive-*.war 2>/dev/null | head -1)
+# Find the WAR file: use WAR_FILE env var if set, otherwise pick the most recent
+if [ -z "$WAR_FILE" ]; then
+    WAR_FILE=$(ls -t ${OUTPUT_DIR}/cohesive-*.war 2>/dev/null | head -1)
+fi
 
 if [ -z "$WAR_FILE" ]; then
     echo -e "${RED}Error: No WAR file found in ${OUTPUT_DIR}/${NC}"
