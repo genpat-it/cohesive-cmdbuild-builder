@@ -207,6 +207,29 @@ MAVEN_THREADS=1 \
 ./build-war.sh
 ```
 
+## Pre-Build String Replacements
+
+The build system supports **pre-build string replacements** — find/replace operations applied to source files **after cloning but before Maven compilation**. This is useful for changing hardcoded values (URLs, hostnames, configuration strings) in the source code before it gets compiled into the WAR.
+
+### How it works
+
+1. The `pre-build-apply.sh` script is executed inside the Docker build after the git clone step
+2. By default, it's a no-op (does nothing)
+3. When managed by [pg-diff-web](https://gtc-gitea.izs.intra:222/a.deruvo/pg-diff-web), the script is auto-generated with the configured replacement rules before each build, and restored to no-op afterwards
+4. Each rule specifies a file glob pattern (e.g., `*.json`, `*.properties`) and a find/replace pair
+5. Replacements use `perl -pi -e` with `\Q...\E` quoting for safe literal string matching
+
+### Build phases
+
+Each replacement rule can be configured as:
+
+| Phase | When | Applied to |
+|-------|------|------------|
+| **Pre-build** | After git clone, before Maven | Source files (`.java`, `.properties`, `.json`, etc.) |
+| **Post-build** | After WAR is generated | Files inside the WAR (extracted, modified, re-packed) |
+
+Pre-build is useful when you need changes compiled into Java classes or processed by Maven resource filtering. Post-build is useful for config files and static resources that don't need recompilation.
+
 ## Hotpatch (Quick JS/Config Changes)
 
 For quick changes (locales, JS files, configuration) without a full Sencha/Maven rebuild:
@@ -239,6 +262,7 @@ This takes **seconds** instead of minutes — no Docker, Maven, or Sencha needed
 cohesive-cmdbuild-builder/
 ├── Dockerfile                 # Builds the WAR from source
 ├── build-war.sh              # Build script
+├── pre-build-apply.sh        # Pre-build string replacements (auto-generated)
 ├── hotpatch-war.sh           # Quick WAR patching (no rebuild)
 ├── deploy-war.sh             # Automatic deployment script (optional)
 ├── WEB-INF/                  # Template files included in WAR
@@ -260,6 +284,8 @@ cohesive-cmdbuild-builder/
 ```
 ┌─ Stage 1: builder ──────────────────────────┐
 │ Source Code (Git: configurable repo + branch)│
+│     ↓                                        │
+│ Pre-Build Replacements (optional)            │
 │     ↓                                        │
 │ Maven Build (Java compilation, 128 threads)  │
 │     ↓                                        │

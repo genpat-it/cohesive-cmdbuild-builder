@@ -48,6 +48,10 @@ RUN --mount=type=cache,target=/root/.gitcache \
     rm -f ~/.ssh/config && \
     echo "✓ Repository cloned successfully"
 
+# Pre-build string replacements (applied to source before Maven)
+COPY pre-build-apply.sh /tmp/pre-build-apply.sh
+RUN chmod +x /tmp/pre-build-apply.sh && /tmp/pre-build-apply.sh
+
 WORKDIR /build/cmdbuild-ui/cmdbuild-3.4.3-src
 
 # Fix Maven dependencies
